@@ -5,7 +5,9 @@ import (
 	"errors"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
+	"github.com/docker/docker/pkg/archive"
 	"github.com/google/go-containerregistry/pkg/crane"
+	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"io/ioutil"
 	"log"
 	"os"
@@ -97,17 +99,41 @@ func storeImageMetadata(name, tag, hashHex string) {
 	writeImagesMetadata(metadata)
 }
 
+func downloadImageFile(image v1.Image, fullName, hashHex string) {
+	saveDir := common.TempDir
+	_ = util.CreateDirsIfNotExist([]string{saveDir})
+	if err := crane.Save(image, fullName, saveDir+hashHex+".tar"); err != nil {
+		log.Fatalln(err)
+		return
+	}
+	untarImage(hashHex)
+}
+
+func untarImage(imageHash string) {
+	imageTarPath := common.TempDir + imageHash + ".tar"
+	targetPath := common.ImageBaseDir + imageHash
+	_ = util.CreateDirsIfNotExist([]string{targetPath})
+	file, err := os.Open(imageTarPath)
+	if err != nil {
+		log.Fatalln(err)
+		return
+	}
+	if err := archive.Untar(file, targetPath, nil); err != nil {
+		log.Fatalln(err)
+	}
+}
+
 func DownloadImageIfNotExist(src string) string {
 	name, tag := getImageNameAndTag(src)
 	if ok, imageHash := checkImageExistByName(name, tag); !ok {
 		log.Printf("Downloading image metadata for %s:%s", name, tag)
-		image, err := crane.Pull(strings.Join([]string{name, tag}, ":"))
+		fullName := strings.Join([]string{name, tag}, ":")
+		image, err := crane.Pull(fullName)
 		if err != nil {
 			log.Fatal(err)
 		}
 		digest, _ := image.Digest()
 		imageHashHex := digest.Hex[:12]
-		_, _ = image.Manifest()
 		log.Println("Image Hash Hex: ", imageHashHex)
 		if exist, altName, altTag := checkImageExistByHash(imageHashHex); exist {
 			log.Printf("Required image %s:%s is the same as %s:%s, skip download", name, tag, altName, altTag)
@@ -115,6 +141,7 @@ func DownloadImageIfNotExist(src string) string {
 			return imageHashHex
 		}
 		storeImageMetadata(name, tag, imageHashHex)
+		downloadImageFile(image, fullName, imageHashHex)
 		return imageHashHex
 	} else {
 		log.Println("Image already exists. Skip download.")
