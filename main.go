@@ -23,9 +23,10 @@ func main() {
 	switch cmd {
 	case "run":
 		_ = fs.Parse(os.Args[2:])
-		log.Println(imageName)
-		_ = image.DownloadImageIfNotExist(imageName)
-		container.Run(opts, "", os.Args[2:])
+		imageHash := image.DownloadImageIfNotExist(imageName)
+		log.Println("Image Hash: ", imageHash)
+		containerId := container.CreateContainer(imageHash)
+		container.Run(opts, containerId, imageHash, os.Args[2:])
 	case "child-mode":
 		_ = fs.Parse(os.Args[2:])
 		container.Exec(containerId, opts.CpuLimit, opts.MemLimit, os.Args[2:])

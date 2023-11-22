@@ -16,11 +16,11 @@ type Options struct {
 }
 
 // Run 从image创建一个容器运行
-func Run(opt *Options, imageHash string, args []string) {
+func Run(opt *Options, containerId, imageHash string, args []string) {
 	cmdArgs := []string{"child-mode"}
 	cmdArgs = append(cmdArgs, opt.ToString()...)
 	cmdArgs = append(cmdArgs, args...)
-	cmdArgs = append(cmdArgs, "-container", NewContainerId())
+	cmdArgs = append(cmdArgs, "-container", containerId)
 	// cmd.Run 以child-mode参数创建子进程并运行my_container
 	cmd := exec.Command("/proc/self/exe", cmdArgs...)
 	cmd.Stdout = os.Stdout
@@ -33,6 +33,7 @@ func Run(opt *Options, imageHash string, args []string) {
 	}
 	log.Println("Cmd Args: ", cmd.Args)
 	util.Must(cmd.Run(), "namespace run failed")
+	util.Must(UmountContainerFS(containerId), "Unable to unmount container fs")
 	log.Println("container done")
 }
 
