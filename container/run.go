@@ -2,10 +2,13 @@ package container
 
 import (
 	"github.com/StellarisJAY/my-container/cgroup"
+	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
+	"golang.org/x/sys/unix"
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"strconv"
 	"syscall"
 )
@@ -19,8 +22,8 @@ type Options struct {
 func Run(opt *Options, containerId, imageHash string, args []string) {
 	cmdArgs := []string{"child-mode"}
 	cmdArgs = append(cmdArgs, opt.ToString()...)
-	cmdArgs = append(cmdArgs, args...)
 	cmdArgs = append(cmdArgs, "-container", containerId)
+	cmdArgs = append(cmdArgs, args...)
 	// cmd.Run 以child-mode参数创建子进程并运行my_container
 	cmd := exec.Command("/proc/self/exe", cmdArgs...)
 	cmd.Stdout = os.Stdout
@@ -42,6 +45,26 @@ func Exec(containerId string, cpuLimit float64, memLimit int, args []string) {
 	// 创建CGroup控制CPU和内存配额
 	cgroup.CreateCGroups(containerId)
 	cgroup.ConfigureCGroup(containerId, cpuLimit, memLimit)
+
+	mntPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt")
+
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdout = os.Stdout
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	util.Must(unix.Sethostname([]byte(containerId)), "Unable to set container host name")
+	// 将当前namespace的根目录设置到容器根目录
+	util.Must(unix.Chroot(mntPath), "Unable to chroot to container file system")
+	util.Must(unix.Chdir("/"), "Unable to chdir to container root")
+	util.CreateDirsIfNotExist([]string{"/proc", "/sys"})
+	// 挂载/proc /sys
+	util.Must(unix.Mount("proc", "/proc", "proc", 0, ""), "Unable to mount /proc")
+	util.Must(unix.Mount("sysfs", "/sys", "sysfs", 0, ""), "Unable to mount /sys")
+
+	_ = cmd.Run()
+
+	util.Must(unix.Unmount("/proc", 0), "Unable to unmount /proc")
+	util.Must(unix.Unmount("/sys", 0), "Unable to unmount /sys")
 }
 
 func (opt *Options) ToString() []string {

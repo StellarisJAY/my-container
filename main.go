@@ -29,6 +29,6 @@ func main() {
 		container.Run(opts, containerId, imageHash, os.Args[2:])
 	case "child-mode":
 		_ = fs.Parse(os.Args[2:])
-		container.Exec(containerId, opts.CpuLimit, opts.MemLimit, os.Args[2:])
+		container.Exec(containerId, opts.CpuLimit, opts.MemLimit, fs.Args())
 	}
 }
