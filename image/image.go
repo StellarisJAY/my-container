@@ -3,9 +3,9 @@ package image
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
-	"github.com/docker/docker/pkg/archive"
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"io/ioutil"
@@ -15,6 +15,12 @@ import (
 )
 
 type imageEntries map[string]string
+
+type Manifest struct {
+	Config   string   `json:"Config"`
+	RepoTags []string `json:"RepoTags"`
+	Layers   []string `json:"Layers"`
+}
 
 func getImageNameAndTag(src string) (string, string) {
 	parts := strings.Split(src, ":")
@@ -106,21 +112,28 @@ func downloadImageFile(image v1.Image, fullName, hashHex string) {
 		log.Fatalln(err)
 		return
 	}
-	untarImage(hashHex)
 }
 
 func untarImage(imageHash string) {
 	imageTarPath := common.TempDir + imageHash + ".tar"
 	targetPath := common.ImageBaseDir + imageHash
-	_ = util.CreateDirsIfNotExist([]string{targetPath})
-	file, err := os.Open(imageTarPath)
-	if err != nil {
-		log.Fatalln(err)
+	if err := util.Untar(imageTarPath, targetPath); err != nil {
+		log.Fatalln(fmt.Errorf("unable to untar image %w", err))
 		return
 	}
-	if err := archive.Untar(file, targetPath, nil); err != nil {
-		log.Fatalln(err)
+}
+
+func ParseManifest(imageHash string) ([]Manifest, error) {
+	manifestPath := common.ImageBaseDir + imageHash + "/manifest.json"
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read manifest.json %w", err)
 	}
+	var m []Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, fmt.Errorf("unable to parse manifest.json %w", err)
+	}
+	return m, nil
 }
 
 func DownloadImageIfNotExist(src string) string {
@@ -142,6 +155,7 @@ func DownloadImageIfNotExist(src string) string {
 		}
 		storeImageMetadata(name, tag, imageHashHex)
 		downloadImageFile(image, fullName, imageHashHex)
+		untarImage(imageHashHex)
 		return imageHashHex
 	} else {
 		log.Println("Image already exists. Skip download.")
