@@ -139,7 +139,7 @@ func ParseManifest(imageHash string) ([]Manifest, error) {
 func DownloadImageIfNotExist(src string) string {
 	name, tag := getImageNameAndTag(src)
 	if ok, imageHash := checkImageExistByName(name, tag); !ok {
-		log.Printf("Downloading image metadata for %s:%s", name, tag)
+		log.Printf("Pulling image metadata for %s:%s", name, tag)
 		fullName := strings.Join([]string{name, tag}, ":")
 		image, err := crane.Pull(fullName)
 		if err != nil {
@@ -147,13 +147,13 @@ func DownloadImageIfNotExist(src string) string {
 		}
 		digest, _ := image.Digest()
 		imageHashHex := digest.Hex[:12]
-		log.Println("Image Hash Hex: ", imageHashHex)
 		if exist, altName, altTag := checkImageExistByHash(imageHashHex); exist {
 			log.Printf("Required image %s:%s is the same as %s:%s, skip download", name, tag, altName, altTag)
 			storeImageMetadata(name, tag, imageHashHex)
 			return imageHashHex
 		}
 		storeImageMetadata(name, tag, imageHashHex)
+		log.Println("Downloading image...")
 		downloadImageFile(image, fullName, imageHashHex)
 		untarImage(imageHashHex)
 		return imageHashHex
