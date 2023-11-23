@@ -2,15 +2,14 @@ package image
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
 	"github.com/google/go-containerregistry/pkg/crane"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
-	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -31,78 +30,32 @@ func getImageNameAndTag(src string) (string, string) {
 	}
 }
 
-func readImagesMetadata() map[string]imageEntries {
-	path := common.ImageBaseDir + "images.json"
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		log.Fatalln("Unable to read images.json: ", err)
-		return nil
-	}
-	result := make(map[string]imageEntries)
-	if err := json.Unmarshal(bytes, &result); err != nil {
-		log.Fatalf("Invalid images.json data ")
-		return nil
-	}
-	return result
-}
-
-func writeImagesMetadata(metadata map[string]imageEntries) {
-	path := common.ImageBaseDir + "images.json"
-	if err := util.CreateFileIfNotExist(path); err != nil {
-		log.Fatalln(err)
-		return
-	}
-	data, err := json.Marshal(metadata)
-	if err != nil {
-		log.Fatalln("Unable to marshal metadata to json ", err)
-		return
-	}
-	if err := ioutil.WriteFile(path, data, 0644); err != nil {
-		log.Fatalln("Unable to write images.json ", err)
-	}
-}
-
 func checkImageExistByName(name, tag string) (bool, string) {
-	metadata := readImagesMetadata()
-	if image, ok := metadata[name]; ok {
-		if h, ok := image[tag]; ok {
-			return true, h
-		}
+	hash, err := getImageHash(name, tag)
+	if err != nil {
+		log.Fatalln(err)
+		return false, ""
 	}
-	return false, ""
+	ok := hash != ""
+	return ok, hash
 }
 
 func checkImageExistByHash(hashHex string) (bool, string, string) {
-	metadata := readImagesMetadata()
-	for name, v := range metadata {
-		for tag, h := range v {
-			if h == hashHex {
-				return true, name, tag
-			}
-		}
+	nameAndTag, err := getImageNameAndTagByHash(hashHex)
+	if err != nil {
+		log.Fatalln(err)
+		return false, "", ""
 	}
-	return false, "", ""
+	if nameAndTag == nil {
+		return false, "", ""
+	}
+	return true, nameAndTag[0], nameAndTag[1]
 }
 
 func storeImageMetadata(name, tag, hashHex string) {
-	var metadata map[string]imageEntries
-	if m := readImagesMetadata(); m != nil {
-		metadata = m
-	} else {
-		metadata = make(map[string]imageEntries)
+	if err := storeImage(name, tag, hashHex); err != nil {
+		log.Fatalln(err)
 	}
-	var entry imageEntries
-	if m, ok := metadata[name]; !ok {
-		entry = make(map[string]string)
-	} else {
-		entry = m
-	}
-	entry[tag] = hashHex
-	metadata[name] = entry
-	writeImagesMetadata(metadata)
 }
 
 func downloadImageFile(image v1.Image, fullName, hashHex string) {
@@ -160,5 +113,18 @@ func DownloadImageIfNotExist(src string) string {
 	} else {
 		log.Println("Image already exists. Skip download.")
 		return imageHash
+	}
+}
+
+func formatSize(size int) string {
+	switch {
+	case size < 1<<10:
+		return strconv.Itoa(size) + "B"
+	case size < 1<<20:
+		return strconv.Itoa(size>>10) + "KiB"
+	case size < 1<<30:
+		return strconv.Itoa(size>>20) + "MiB"
+	default:
+		return strconv.Itoa(size>>30) + "GiB"
 	}
 }

@@ -5,6 +5,7 @@ go 1.21.3
 require github.com/google/go-containerregistry v0.16.1
 
 require (
+	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect
 	github.com/docker/cli v24.0.0+incompatible // indirect
 	github.com/docker/distribution v2.8.2+incompatible // indirect
