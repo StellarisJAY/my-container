@@ -9,7 +9,6 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -113,18 +112,5 @@ func DownloadImageIfNotExist(src string) string {
 	} else {
 		log.Println("Image already exists. Skip download.")
 		return imageHash
-	}
-}
-
-func formatSize(size int) string {
-	switch {
-	case size < 1<<10:
-		return strconv.Itoa(size) + "B"
-	case size < 1<<20:
-		return strconv.Itoa(size>>10) + "KiB"
-	case size < 1<<30:
-		return strconv.Itoa(size>>20) + "MiB"
-	default:
-		return strconv.Itoa(size>>30) + "GiB"
 	}
 }

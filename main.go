@@ -51,5 +51,9 @@ func main() {
 		for _, c := range containers {
 			fmt.Println(c)
 		}
+	case "images":
+		if err := image.ListImages(); err != nil {
+			log.Fatalln(err)
+		}
 	}
 }
