@@ -7,6 +7,7 @@ import (
 	"github.com/StellarisJAY/my-container/util"
 	"golang.org/x/sys/unix"
 	"log"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -15,6 +16,25 @@ import (
 func NewContainerId() string {
 	// todo container ID
 	return fmt.Sprintf("%d", time.Now().UnixMilli())
+}
+
+func GetRunningContainers() ([]string, error) {
+	dir := "/sys/fs/cgroup/cpu/my_container"
+	if stat, err := os.Stat(dir); err == nil && stat.IsDir() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return nil, err
+		}
+		var containers []string
+		for _, entry := range entries {
+			if entry.IsDir() {
+				containers = append(containers, entry.Name())
+			}
+		}
+		return containers, nil
+	} else {
+		return nil, err
+	}
 }
 
 // CreateContainer 从一个镜像创建容器，返回容器ID
