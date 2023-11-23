@@ -21,12 +21,14 @@ func CreateCGroups(containerId string) {
 	}
 }
 
-func RemoveCGroups(containerId string) {
-	fmt.Println("removing container cgroup: ", containerId)
+func RemoveCGroups(containerId string) error {
 	cgroupDirs := getCGroupDirs(containerId)
 	for _, dir := range cgroupDirs {
-		util.Must(util.RemoveDir(dir), "failed to remove cgroup")
+		if err := util.RemoveDir(dir); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func getCGroupDirs(containerId string) []string {
