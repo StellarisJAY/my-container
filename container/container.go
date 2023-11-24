@@ -1,6 +1,7 @@
 package container
 
 import (
+	"errors"
 	"fmt"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/image"
@@ -49,11 +50,33 @@ func CreateContainer(imageHash string) string {
 	}
 	util.Must(util.CreateDirsIfNotExist(containerDirs), "Unable to make container dirs")
 	// 挂载容器文件系统
-	util.Must(mountContainerFS(imageHash, containerId), "Unable to mount image layers ")
+	util.Must(createContainerFS(imageHash, containerId), "Unable to mount image layers ")
 	return containerId
 }
 
-func mountContainerFS(imageHash string, containerId string) error {
+func MountExistingContainerFS(containerId string) error {
+	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
+	var layers []string
+	if stat, err := os.Stat(path.Join(containerFS, "layers")); os.IsNotExist(err) || !stat.IsDir() {
+		return errors.New("container layers directory doesn't exist")
+	}
+	layerPath := path.Join(containerFS, "layers")
+	entries, err := os.ReadDir(layerPath)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return errors.New("invalid container layers")
+	}
+	for _, entry := range entries {
+		if entry.IsDir() && len(entry.Name()) == 16 {
+			layers = append(layers, path.Join(layerPath, entry.Name()))
+		}
+	}
+	return mountContainerLayers(containerId, layers)
+}
+
+func createContainerFS(imageHash string, containerId string) error {
 	manifest, err := image.ParseManifest(imageHash)
 	if err != nil {
 		return err
@@ -72,14 +95,17 @@ func mountContainerFS(imageHash string, containerId string) error {
 			return err
 		}
 	}
+	return mountContainerLayers(containerId, layerPaths)
+}
 
+func mountContainerLayers(containerId string, layers []string) error {
+	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
 	mntPath := path.Join(containerFS, "mnt")
 	// lowerdir为镜像的多个layers
 	mntOptions := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
-		strings.Join(layerPaths, ":"),
+		strings.Join(layers, ":"),
 		path.Join(containerFS, "upperdir"),
 		path.Join(containerFS, "workdir"))
-
 	if err := unix.Mount("none", mntPath, "overlay", 0, mntOptions); err != nil {
 		return fmt.Errorf("mount error %w", err)
 	}
