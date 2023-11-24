@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/StellarisJAY/my-container/common"
+	"github.com/StellarisJAY/my-container/config"
 	"github.com/StellarisJAY/my-container/util"
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"log"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -18,6 +22,18 @@ type Manifest struct {
 	Config   string   `json:"Config"`
 	RepoTags []string `json:"RepoTags"`
 	Layers   []string `json:"Layers"`
+}
+
+func pullImageFromCustomSource(src string) (v1.Image, error) {
+	ref, err := name.ParseReference(src)
+	if err != nil {
+		return nil, err
+	}
+	image, err := remote.Image(ref, remote.WithJobs(1))
+	if err != nil {
+		return nil, err
+	}
+	return image, nil
 }
 
 func getImageNameAndTag(src string) (string, string) {
@@ -57,13 +73,10 @@ func storeImageMetadata(name, tag, hashHex string) {
 	}
 }
 
-func downloadImageFile(image v1.Image, fullName, hashHex string) {
+func downloadImageFile(image v1.Image, src, hashHex string) error {
 	saveDir := common.TempDir
 	_ = util.CreateDirsIfNotExist([]string{saveDir})
-	if err := crane.Save(image, fullName, saveDir+hashHex+".tar"); err != nil {
-		log.Fatalln(err)
-		return
-	}
+	return crane.Save(image, src, path.Join(saveDir, hashHex+".tar"))
 }
 
 func untarImage(imageHash string) {
@@ -89,24 +102,30 @@ func ParseManifest(imageHash string) ([]Manifest, error) {
 }
 
 func DownloadImageIfNotExist(src string) string {
-	name, tag := getImageNameAndTag(src)
-	if ok, imageHash := checkImageExistByName(name, tag); !ok {
-		log.Printf("Pulling image metadata for %s:%s", name, tag)
-		fullName := strings.Join([]string{name, tag}, ":")
-		image, err := crane.Pull(fullName)
+	imageName, tag := getImageNameAndTag(src)
+	if ok, imageHash := checkImageExistByName(imageName, tag); !ok {
+		log.Printf("Pulling image metadata for %s:%s", imageName, tag)
+		fullName := strings.Join([]string{imageName, tag}, ":")
+		src := config.GlobalConfig.Registries[0] + "/library/" + fullName
+		log.Println("Pulling image from ", src)
+		image, err := pullImageFromCustomSource(src)
 		if err != nil {
 			log.Fatal(err)
+			return ""
 		}
 		digest, _ := image.Digest()
 		imageHashHex := digest.Hex[:12]
 		if exist, altName, altTag := checkImageExistByHash(imageHashHex); exist {
-			log.Printf("Required image %s:%s is the same as %s:%s, skip download", name, tag, altName, altTag)
-			storeImageMetadata(name, tag, imageHashHex)
+			log.Printf("Required image %s:%s is the same as %s:%s, skip download", imageName, tag, altName, altTag)
+			storeImageMetadata(imageName, tag, imageHashHex)
 			return imageHashHex
 		}
-		storeImageMetadata(name, tag, imageHashHex)
+		storeImageMetadata(imageName, tag, imageHashHex)
 		log.Println("Downloading image...")
-		downloadImageFile(image, fullName, imageHashHex)
+		if err := downloadImageFile(image, src, imageHashHex); err != nil {
+			log.Fatalln("Unable to download image ", err)
+			return ""
+		}
 		untarImage(imageHashHex)
 		return imageHashHex
 	} else {
