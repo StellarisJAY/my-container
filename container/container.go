@@ -1,6 +1,7 @@
 package container
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"github.com/StellarisJAY/my-container/common"
@@ -11,12 +12,16 @@ import (
 	"os"
 	"path"
 	"strings"
-	"time"
 )
 
 func NewContainerId() string {
-	// todo container ID
-	return fmt.Sprintf("%d", time.Now().UnixMilli())
+	bytes := make([]byte, 8)
+	_, _ = rand.Read(bytes)
+	return fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
+		bytes[0], bytes[1],
+		bytes[2], bytes[3],
+		bytes[4], bytes[5],
+		bytes[6], bytes[7])
 }
 
 func GetRunningContainers() ([]string, error) {
@@ -102,6 +107,7 @@ func mountContainerLayers(containerId string, layers []string) error {
 	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
 	mntPath := path.Join(containerFS, "mnt")
 	// lowerdir为镜像的多个layers
+
 	mntOptions := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
 		strings.Join(layers, ":"),
 		path.Join(containerFS, "upperdir"),
