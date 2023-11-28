@@ -56,7 +56,7 @@ func checkImageExistByName(name, tag string) (bool, string) {
 }
 
 func checkImageExistByHash(hashHex string) (bool, string, string) {
-	nameAndTag, err := getImageNameAndTagByHash(hashHex)
+	nameAndTag, err := GetImageNameAndTagByHash(hashHex)
 	if err != nil {
 		log.Fatalln(err)
 		return false, "", ""
@@ -86,6 +86,24 @@ func untarImage(imageHash string) {
 		log.Fatalln(fmt.Errorf("unable to untar image %w", err))
 		return
 	}
+}
+
+func untarLayers(imageHash string) error {
+	manifest, err := ParseManifest(imageHash)
+	if err != nil {
+		return err
+	}
+	imagePath := common.ImageBaseDir + imageHash
+	layers := manifest[0].Layers
+	for _, layer := range layers {
+		layerPath := path.Join(imagePath, "layers", strings.TrimSuffix(layer, ".tar.gz")[:16])
+		log.Println("Untar layer: ", layer)
+		// {image}/{layer}.tar.gz 解压到 {container}/fs/{i}/
+		if err := util.Untar(path.Join(imagePath, layer), layerPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ParseManifest(imageHash string) ([]Manifest, error) {
@@ -127,6 +145,7 @@ func DownloadImageIfNotExist(src string) string {
 			return ""
 		}
 		untarImage(imageHashHex)
+		util.Must(untarLayers(imageHashHex), "Unable to untar image layers")
 		return imageHashHex
 	} else {
 		log.Println("Image already exists. Skip download.")
