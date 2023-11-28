@@ -57,7 +57,7 @@ func getImageHash(name, tag string) (string, error) {
 	return hash, nil
 }
 
-func getImageNameAndTagByHash(hash string) ([]string, error) {
+func GetImageNameAndTagByHash(hash string) ([]string, error) {
 	db, err := bolt.Open(dbFile, 0644, nil)
 	if err != nil {
 		return nil, err

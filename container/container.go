@@ -1,6 +1,8 @@
 package container
 
 import (
+	"bufio"
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -14,32 +16,65 @@ import (
 	"strings"
 )
 
-func NewContainerId() string {
-	bytes := make([]byte, 8)
-	_, _ = rand.Read(bytes)
-	return fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
-		bytes[0], bytes[1],
-		bytes[2], bytes[3],
-		bytes[4], bytes[5],
-		bytes[6], bytes[7])
+type RunningContainerInfo struct {
+	ContainerId string
+	Image       string
+	Pid         string
 }
 
-func GetRunningContainers() ([]string, error) {
+func NewContainerId() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%02x%02x%02x%02x%02x%02x%02x%02x",
+		b[0], b[1],
+		b[2], b[3],
+		b[4], b[5],
+		b[6], b[7])
+}
+
+func GetRunningContainers() ([]RunningContainerInfo, error) {
 	dir := "/sys/fs/cgroup/cpu/my_container"
 	if stat, err := os.Stat(dir); err == nil && stat.IsDir() {
 		entries, err := os.ReadDir(dir)
 		if err != nil {
 			return nil, err
 		}
-		var containers []string
+		var containers []RunningContainerInfo
 		for _, entry := range entries {
 			if entry.IsDir() {
-				containers = append(containers, entry.Name())
+				info := getRunningContainerInfo(entry.Name())
+				if info == nil {
+					continue
+				}
+				containers = append(containers, *info)
 			}
 		}
 		return containers, nil
 	} else {
 		return nil, err
+	}
+}
+
+func getRunningContainerInfo(containerId string) *RunningContainerInfo {
+	pid, err := getRunningContainerPid(containerId)
+	if err != nil {
+		log.Println("Unable to get pid for ", containerId, " error: ", err)
+		return nil
+	}
+	imageHash, err := getContainerImage(containerId)
+	if err != nil {
+		log.Println("Unable to get image hash, error ", err)
+		return nil
+	}
+	nameAndTag, err := image.GetImageNameAndTagByHash(imageHash)
+	if err != nil {
+		log.Println("Unable to get image name and tag, error: ", err)
+		return nil
+	}
+	return &RunningContainerInfo{
+		ContainerId: containerId,
+		Pid:         pid,
+		Image:       strings.Join(nameAndTag, ":"),
 	}
 }
 
@@ -87,18 +122,11 @@ func createContainerFS(imageHash string, containerId string) error {
 		return err
 	}
 	imagePath := common.ImageBaseDir + imageHash
-	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
-
 	layers := manifest[0].Layers
 	var layerPaths []string
 	for _, layer := range layers {
-		layerPath := path.Join(containerFS, "layers", strings.TrimSuffix(layer, ".tar.gz")[:16])
+		layerPath := path.Join(imagePath, "layers", strings.TrimSuffix(layer, ".tar.gz")[:16])
 		layerPaths = append(layerPaths, layerPath)
-		log.Println("Untar layer: ", layer)
-		// {image}/{layer}.tar.gz 解压到 {container}/fs/{i}/
-		if err := util.Untar(path.Join(imagePath, layer), layerPath); err != nil {
-			return err
-		}
 	}
 	return mountContainerLayers(containerId, layerPaths)
 }
@@ -107,7 +135,6 @@ func mountContainerLayers(containerId string, layers []string) error {
 	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
 	mntPath := path.Join(containerFS, "mnt")
 	// lowerdir为镜像的多个layers
-
 	mntOptions := fmt.Sprintf("lowerdir=%s,upperdir=%s,workdir=%s",
 		strings.Join(layers, ":"),
 		path.Join(containerFS, "upperdir"),
@@ -120,4 +147,46 @@ func mountContainerLayers(containerId string, layers []string) error {
 
 func UmountContainerFS(containerId string) error {
 	return unix.Unmount(path.Join(common.ContainerBaseDir, containerId, "fs", "mnt"), 0)
+}
+
+func getRunningContainerPid(containerId string) (string, error) {
+	dir := "/sys/fs/cgroup/cpu/my_container/" + containerId
+	if stat, err := os.Stat(dir); os.IsNotExist(err) || !stat.IsDir() {
+		return "", os.ErrNotExist
+	}
+	data, err := os.ReadFile(path.Join(dir, "cgroup.procs"))
+	if err != nil {
+		return "", err
+	}
+	pids := strings.Split(string(data), "\n")
+	return pids[1], nil
+}
+
+func getContainerImage(containerId string) (string, error) {
+	data, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return "", fmt.Errorf("can't read /proc/mounts error: %w", err)
+	}
+	reader := bufio.NewReader(bytes.NewReader(data))
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		parts := strings.Split(line, " ")
+		_, target, mountType, mountOptions := parts[0], parts[1], parts[2], parts[3]
+		if mountType != "overlay" || !strings.Contains(target, containerId) {
+			continue
+		}
+		options := strings.Split(mountOptions, ",")
+		for _, opt := range options {
+			if !strings.HasPrefix(opt, "lowerdir=") {
+				continue
+			}
+			lowerDirs := strings.TrimPrefix(opt, "lowerdir=")
+			layer0 := strings.TrimPrefix(lowerDirs, common.ImageBaseDir)
+			return strings.Split(layer0, "/")[0], nil
+		}
+	}
+	return "", fmt.Errorf("can't find mount points for container %s", containerId)
 }

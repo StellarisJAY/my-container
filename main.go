@@ -3,13 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/container"
 	"github.com/StellarisJAY/my-container/image"
 	"github.com/StellarisJAY/my-container/util"
 	"log"
 	"os"
-	"path"
 )
 
 func main() {
@@ -46,30 +44,27 @@ func main() {
 			log.Fatalln("Must provide container exec command")
 			return
 		}
-		container.Exec(containerId, opts.CpuLimit, opts.MemLimit, fs.Args())
+		container.ExecCommand(containerId, opts.CpuLimit, opts.MemLimit, fs.Args())
 	case "exec":
 		_ = fs.Parse(os.Args[2:])
-		// 判断容器是否存在
-		containerDir := path.Join(common.ContainerBaseDir, containerId)
-		if _, err := os.Stat(containerDir); os.IsNotExist(err) {
-			log.Println("Container doesn't exist ", containerId)
-			return
-		}
-		// 挂载容器的文件系统layers
-		util.Must(container.MountExistingContainerFS(containerId), "Unable to mount existing container fs")
-		container.Run(opts, containerId, os.Args[2:])
+		util.Must(container.ExecInContainer(containerId, fs.Args()), "Unable to exec in container ")
 	case "ps":
 		containers, err := container.GetRunningContainers()
 		if err != nil {
 			log.Fatalln("Unable to list running containers: ", err)
 			return
 		}
+		fmt.Printf("%16s\t%8s\t%32s\n", "Container", "Pid", "Image")
 		for _, c := range containers {
-			fmt.Println(c)
+			fmt.Printf("%16s\t%8s\t%32s\n", c.ContainerId, c.Pid, c.Image)
 		}
 	case "images":
+		fmt.Printf("%16s\t%8s\t%12s\n", "Name", "Tag", "Hash")
 		if err := image.ListImages(); err != nil {
 			log.Fatalln(err)
 		}
+	case "pull":
+		_ = fs.Parse(os.Args[2:])
+		_ = image.DownloadImageIfNotExist(imageName)
 	}
 }
