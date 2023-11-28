@@ -2,6 +2,7 @@ package container
 
 import (
 	"errors"
+	"github.com/StellarisJAY/my-container/cgroup"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
 	"golang.org/x/sys/unix"
@@ -36,6 +37,8 @@ func ExecInContainer(containerId string, args []string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	// exec的进程加入容器的cgroup
+	cgroup.CreateCGroups(containerId)
 	// 转到容器root目录，创建子进程执行命令
 	mntPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt")
 	util.Must(unix.Chroot(mntPath), "Unable to chroot to mnt path")
