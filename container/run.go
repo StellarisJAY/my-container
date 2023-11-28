@@ -1,6 +1,7 @@
 package container
 
 import (
+	"errors"
 	"github.com/StellarisJAY/my-container/cgroup"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/util"
@@ -10,12 +11,14 @@ import (
 	"os/exec"
 	"path"
 	"strconv"
+	"strings"
 	"syscall"
 )
 
 type Options struct {
 	CpuLimit float64
 	MemLimit int
+	Mount    string
 }
 
 // Run 从image创建一个容器运行
@@ -45,13 +48,18 @@ func Run(opt *Options, containerId string, args []string) {
 }
 
 // ExecCommand 在一个容器中执行命令，该函数在child-mode子进程中进行，此时进程已经处于新的Namespace
-func ExecCommand(containerId string, cpuLimit float64, memLimit int, args []string) {
+func ExecCommand(containerId string, options *Options, args []string) {
 	// 创建CGroup控制CPU和内存配额
 	cgroup.CreateCGroups(containerId)
-	cgroup.ConfigureCGroup(containerId, cpuLimit, memLimit)
+	cgroup.ConfigureCGroup(containerId, options.CpuLimit, options.MemLimit)
 
 	mntPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt")
-
+	var hostDirMntPoint string
+	if mntPoint, err := bindMounts(containerId, options.Mount); err != nil {
+		log.Println("Unable to mount host directory ", err)
+	} else {
+		hostDirMntPoint = mntPoint
+	}
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
@@ -66,9 +74,38 @@ func ExecCommand(containerId string, cpuLimit float64, memLimit int, args []stri
 	util.Must(unix.Mount("sysfs", "/sys", "sysfs", 0, ""), "Unable to mount /sys")
 
 	_ = cmd.Run()
-
+	// unmount 宿主机目录
+	_ = unix.Unmount(hostDirMntPoint, 0)
 	util.Must(unix.Unmount("/proc", 0), "Unable to unmount /proc")
 	util.Must(unix.Unmount("/sys", 0), "Unable to unmount /sys")
+}
+
+func bindMounts(containerId string, mntOptions string) (string, error) {
+	parts := strings.Split(mntOptions, ",")
+	var src, dest string
+	for _, option := range parts {
+		kv := strings.SplitN(option, "=", 2)
+		if len(kv) != 2 {
+			return "", errors.New("invalid mnt options")
+		}
+		key, value := kv[0], kv[1]
+		switch key {
+		case "src":
+			src = value
+		case "dest":
+			dest = value
+		default:
+			continue
+		}
+	}
+	if src == "" || dest == "" {
+		return "", errors.New("invalid mount source or destination")
+	}
+	log.Println("Mount host directory, src: ", src, ", dest: ", dest)
+	mntPoint := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt", dest)
+	_ = util.CreateDirsIfNotExist([]string{mntPoint})
+	// 使用bind mount将宿主机目录挂载到容器目录
+	return dest, unix.Mount(src, mntPoint, "", unix.MS_BIND, "")
 }
 
 func (opt *Options) ToString() []string {

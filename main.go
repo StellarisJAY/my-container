@@ -30,6 +30,7 @@ func main() {
 	fs.IntVar(&opts.MemLimit, "mem", 1<<20, "Set memory limit")
 	fs.StringVar(&containerId, "container", "", "Container id")
 	fs.StringVar(&imageName, "image", "", "Image full name")
+	fs.StringVar(&opts.Mount, "mount", "", "Mount points")
 	switch cmd {
 	case "run":
 		_ = fs.Parse(os.Args[2:])
@@ -44,7 +45,7 @@ func main() {
 			log.Fatalln("Must provide container exec command")
 			return
 		}
-		container.ExecCommand(containerId, opts.CpuLimit, opts.MemLimit, fs.Args())
+		container.ExecCommand(containerId, opts, fs.Args())
 	case "exec":
 		_ = fs.Parse(os.Args[2:])
 		util.Must(container.ExecInContainer(containerId, fs.Args()), "Unable to exec in container ")
