@@ -40,11 +40,12 @@ func Run(opt *Options, containerId string, args []string) {
 	// 回到父进程
 	util.Must(UmountContainerFS(containerId), "Unable to unmount container fs")
 	util.Must(cgroup.RemoveCGroups(containerId), "Unable to remove cgroups ")
+	util.Must(os.RemoveAll(path.Join(common.ContainerBaseDir, containerId)), "Unable to remove container dir")
 	log.Println("container done")
 }
 
-// Exec 在一个容器中执行命令，该函数在child-mode子进程中进行，此时进程已经处于新的Namespace
-func Exec(containerId string, cpuLimit float64, memLimit int, args []string) {
+// ExecCommand 在一个容器中执行命令，该函数在child-mode子进程中进行，此时进程已经处于新的Namespace
+func ExecCommand(containerId string, cpuLimit float64, memLimit int, args []string) {
 	// 创建CGroup控制CPU和内存配额
 	cgroup.CreateCGroups(containerId)
 	cgroup.ConfigureCGroup(containerId, cpuLimit, memLimit)
