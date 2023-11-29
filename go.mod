@@ -22,5 +22,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	github.com/vbatts/tar-split v0.11.3 // indirect
+	github.com/vishvananda/netlink v1.1.0 // indirect
+	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
 	golang.org/x/sync v0.3.0 // indirect
 )

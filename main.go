@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/StellarisJAY/my-container/container"
 	"github.com/StellarisJAY/my-container/image"
+	"github.com/StellarisJAY/my-container/network"
 	"github.com/StellarisJAY/my-container/util"
 	"log"
 	"os"
@@ -67,5 +68,8 @@ func main() {
 	case "pull":
 		_ = fs.Parse(os.Args[2:])
 		_ = image.DownloadImageIfNotExist(imageName)
+	case "setup-veth":
+		_ = fs.Parse(os.Args[2:])
+		util.Must(network.SetupVethInNamespace(containerId), "Unable to setup veth in container namespace")
 	}
 }
