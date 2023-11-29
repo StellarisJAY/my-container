@@ -139,6 +139,17 @@ func JoinNetworkNamespace(containerId string) error {
 	return unix.Setns(fd, unix.CLONE_NEWNET)
 }
 
+func SetupLocalhostInterface() {
+	links, _ := netlink.LinkList()
+	for _, link := range links {
+		if link.Attrs().Name == "lo" {
+			ipNet, _ := netlink.ParseIPNet("127.0.0.1/32")
+			_ = netlink.AddrAdd(link, &netlink.Addr{IPNet: ipNet})
+			_ = netlink.LinkSetUp(link)
+		}
+	}
+}
+
 func getVethNamePrefix(containerId string) string {
 	return "veth" + containerId[:6]
 }

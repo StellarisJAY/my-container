@@ -80,6 +80,7 @@ func ExecCommand(containerId string, options *Options, args []string) {
 	cmd.Stderr = os.Stderr
 	util.Must(unix.Sethostname([]byte(containerId)), "Unable to set container host name")
 	util.Must(network.JoinNetworkNamespace(containerId), "Unable to switch to container netns")
+	network.SetupLocalhostInterface()
 	// 将当前namespace的根目录设置到容器根目录
 	util.Must(unix.Chroot(mntPath), "Unable to chroot to container file system")
 	util.Must(unix.Chdir("/"), "Unable to chdir to container root")
