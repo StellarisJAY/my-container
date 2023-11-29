@@ -8,6 +8,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	"log"
+	_rand "math/rand"
 	"net"
 	"path"
 )
@@ -118,7 +119,8 @@ func SetupVethInNamespace(containerId string) error {
 		return fmt.Errorf("unable to setns to network namespace, error: %w", err)
 	}
 	veth, _ = netlink.LinkByName(vethName)
-	ipNet, _ := netlink.ParseIPNet(getContainerIP())
+	ip := getContainerIP()
+	ipNet, _ := netlink.ParseIPNet(ip)
 	if err := netlink.AddrAdd(veth, &netlink.Addr{IPNet: ipNet}); err != nil {
 		return fmt.Errorf("unable to add ip to veth, error: %w", err)
 	}
@@ -164,7 +166,8 @@ func RemoveVeth(containerId, suffix string) {
 }
 
 func getContainerIP() string {
-	return "172.29.208.200/16"
+	n1, n2 := _rand.Intn(254), _rand.Intn(254)
+	return fmt.Sprintf("172.29.%d.%d/16", n1, n2)
 }
 func createMACAddress() net.HardwareAddr {
 	hw := make(net.HardwareAddr, 6)
