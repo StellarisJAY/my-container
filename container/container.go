@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"errors"
 	"fmt"
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/image"
@@ -92,28 +91,6 @@ func CreateContainer(imageHash string) string {
 	// 挂载容器文件系统
 	util.Must(createContainerFS(imageHash, containerId), "Unable to mount image layers ")
 	return containerId
-}
-
-func MountExistingContainerFS(containerId string) error {
-	containerFS := path.Join(common.ContainerBaseDir, containerId, "fs")
-	var layers []string
-	if stat, err := os.Stat(path.Join(containerFS, "layers")); os.IsNotExist(err) || !stat.IsDir() {
-		return errors.New("container layers directory doesn't exist")
-	}
-	layerPath := path.Join(containerFS, "layers")
-	entries, err := os.ReadDir(layerPath)
-	if err != nil {
-		return err
-	}
-	if len(entries) == 0 {
-		return errors.New("invalid container layers")
-	}
-	for _, entry := range entries {
-		if entry.IsDir() && len(entry.Name()) == 16 {
-			layers = append(layers, path.Join(layerPath, entry.Name()))
-		}
-	}
-	return mountContainerLayers(containerId, layers)
 }
 
 func createContainerFS(imageHash string, containerId string) error {

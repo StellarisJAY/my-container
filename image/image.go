@@ -16,8 +16,6 @@ import (
 	"strings"
 )
 
-type imageEntries map[string]string
-
 type Manifest struct {
 	Config   string   `json:"Config"`
 	RepoTags []string `json:"RepoTags"`
