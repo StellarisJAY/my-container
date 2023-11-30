@@ -25,11 +25,10 @@ type Options struct {
 // Run 从image创建一个容器运行
 func Run(opt *Options, containerId string, args []string) {
 	// 创建宿主机网桥
-	_, err := network.SetupBridge()
-	if err != nil {
-		log.Println("Unable to set up bridge", err)
-	}
-	// 创建网络命名空间
+	util.Must(network.SetupBridge(), "Unable to set up bridge")
+	// 宿主机与网桥的veth
+	util.Must(network.SetupHostVeth(), "Unable to connect host veth to bridge")
+	// 创建容器网络命名空间
 	util.Must(network.CreateNetworkNamespace(containerId), "Unable to create network namespace")
 	util.Must(network.CreateVeth(containerId), "Unable to create container veth")
 	util.Must(network.SetupVethToBridge(containerId), "Unable to setup container veth to bridge ")

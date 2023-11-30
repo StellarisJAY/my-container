@@ -14,17 +14,18 @@ import (
 )
 
 const (
-	BridgeName = "my-container0"
-	BridgeIP   = "172.40.0.1/16"
+	BridgeName   = "my-container0"
+	HostIP       = "172.40.255.254/16"
+	HostVethName = "mycontainer"
 )
 
 // SetupBridge 设置宿主机网桥
-func SetupBridge() (*netlink.Bridge, error) {
+func SetupBridge() error {
 	ptr, _ := netlink.LinkByName(BridgeName)
 	var bridge0 *netlink.Bridge
 	if br, ok := ptr.(*netlink.Bridge); ok {
 		bridge0 = br
-		return bridge0, nil
+		return nil
 	} else {
 		bridge0 = &netlink.Bridge{
 			LinkAttrs: netlink.LinkAttrs{
@@ -36,19 +37,51 @@ func SetupBridge() (*netlink.Bridge, error) {
 	}
 
 	if err := netlink.LinkAdd(bridge0); err != nil {
-		return nil, err
-	}
-	ipNet, _ := netlink.ParseIPNet(BridgeIP)
-	if err := netlink.AddrAdd(bridge0, &netlink.Addr{
-		IPNet: ipNet,
-	}); err != nil {
-		return nil, err
+		return err
 	}
 	if err := netlink.LinkSetUp(bridge0); err != nil {
-		return nil, err
+		return err
 	}
 
-	return bridge0, nil
+	return nil
+}
+
+// SetupHostVeth 为宿主机创建网桥上的接口，使容器与宿主机互通
+func SetupHostVeth() error {
+	host, br := HostVethName+"-h", HostVethName+"-b"
+	link, _ := netlink.LinkByName(host)
+	if _, ok := link.(*netlink.Veth); ok {
+		return nil
+	}
+
+	bridge, _ := netlink.LinkByName(BridgeName)
+	veth := &netlink.Veth{
+		LinkAttrs: netlink.LinkAttrs{
+			Name:   host,
+			TxQLen: -1,
+		},
+		PeerName:         br,
+		PeerHardwareAddr: createMACAddress(),
+	}
+
+	if err := netlink.LinkAdd(veth); err != nil {
+		return fmt.Errorf("add veth pair error: %w", err)
+	}
+
+	ipNet, _ := netlink.ParseIPNet(HostIP)
+	vethHost, _ := netlink.LinkByName(host)
+	vethBr, _ := netlink.LinkByName(br)
+
+	if err := netlink.AddrAdd(vethHost, &netlink.Addr{IPNet: ipNet}); err != nil {
+		return fmt.Errorf("add ip addr to veth pair error: %w", err)
+	}
+	_ = netlink.LinkSetUp(vethHost)
+
+	if err := netlink.LinkSetMaster(vethBr, bridge); err != nil {
+		return fmt.Errorf("unable to set host veth-br to bridge, error: %w", err)
+	}
+	_ = netlink.LinkSetUp(vethBr)
+	return nil
 }
 
 func CreateVeth(containerId string) error {
@@ -119,7 +152,7 @@ func SetupVethInNamespace(containerId string) error {
 		return fmt.Errorf("unable to setns to network namespace, error: %w", err)
 	}
 	veth, _ = netlink.LinkByName(vethName)
-	ip := getContainerIP()
+	ip := createIP()
 	ipNet, _ := netlink.ParseIPNet(ip)
 	if err := netlink.AddrAdd(veth, &netlink.Addr{IPNet: ipNet}); err != nil {
 		return fmt.Errorf("unable to add ip to veth, error: %w", err)
@@ -165,9 +198,9 @@ func RemoveVeth(containerId, suffix string) {
 	_ = netlink.LinkDel(br)
 }
 
-func getContainerIP() string {
+func createIP() string {
 	n1, n2 := _rand.Intn(254), _rand.Intn(254)
-	return fmt.Sprintf("172.29.%d.%d/16", n1, n2)
+	return fmt.Sprintf("172.40.%d.%d/16", n1, n2)
 }
 func createMACAddress() net.HardwareAddr {
 	hw := make(net.HardwareAddr, 6)
