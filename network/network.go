@@ -10,6 +10,8 @@ import (
 	"log"
 	_rand "math/rand"
 	"net"
+	"os"
+	"os/exec"
 	"path"
 )
 
@@ -44,6 +46,19 @@ func SetupBridge() error {
 	}
 
 	return nil
+}
+
+func InitIptables() {
+	args := []string{
+		"-A", "FORWARD", // FORWARD chain
+		"-i", BridgeName, // input from bridge
+		"-j", "ACCEPT", // jump to ACCEPT
+	}
+	cmd := exec.Command("iptables", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stdin = os.Stdin
+	cmd.Stderr = os.Stderr
+	util.Must(cmd.Run(), "Unable to set iptables rules")
 }
 
 // SetupHostVeth 为宿主机创建网桥上的接口，使容器与宿主机互通
@@ -153,6 +168,7 @@ func SetupVethInNamespace(containerId string) error {
 	}
 	veth, _ = netlink.LinkByName(vethName)
 	ip := createIP()
+	log.Println("Container IP: ", ip)
 	ipNet, _ := netlink.ParseIPNet(ip)
 	if err := netlink.AddrAdd(veth, &netlink.Addr{IPNet: ipNet}); err != nil {
 		return fmt.Errorf("unable to add ip to veth, error: %w", err)

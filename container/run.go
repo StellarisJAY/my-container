@@ -26,6 +26,7 @@ type Options struct {
 func Run(opt *Options, containerId string, args []string) {
 	// 创建宿主机网桥
 	util.Must(network.SetupBridge(), "Unable to set up bridge")
+	network.InitIptables()
 	// 宿主机与网桥的veth
 	util.Must(network.SetupHostVeth(), "Unable to connect host veth to bridge")
 	// 创建容器网络命名空间
