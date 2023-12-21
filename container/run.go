@@ -58,6 +58,7 @@ func Run(opt *Options, containerId string, args []string) {
 	// 回到父进程
 	util.Must(unix.Setns(originalNS, unix.CLONE_NEWNET), "Unable to switch back to host netns")
 	util.Must(UmountContainerFS(containerId), "Unable to unmount container fs")
+	network.UnmountNetworkNamespace(containerId)
 	util.Must(cgroup.RemoveCGroups(containerId), "Unable to remove cgroups ")
 	util.Must(os.RemoveAll(path.Join(common.ContainerBaseDir, containerId)), "Unable to remove container dir")
 	log.Println("container done")

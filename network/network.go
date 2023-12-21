@@ -137,6 +137,12 @@ func CreateNetworkNamespace(containerId string) error {
 	return nil
 }
 
+func UnmountNetworkNamespace(containerId string) {
+	mntPath := getNetNsMountPoint(containerId)
+	_ = unix.Unmount(mntPath, 0)
+	_ = os.RemoveAll(mntPath)
+}
+
 // SetupVethToBridge 在宿主机设置veth的主机端
 func SetupVethToBridge(containerId string) error {
 	bridge, _ := netlink.LinkByName(BridgeName)
