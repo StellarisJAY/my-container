@@ -7,6 +7,7 @@ import (
 	"github.com/StellarisJAY/my-container/image"
 	"github.com/StellarisJAY/my-container/network"
 	"github.com/StellarisJAY/my-container/util"
+	"github.com/StellarisJAY/my-container/volume"
 	"log"
 	"os"
 )
@@ -32,6 +33,7 @@ func main() {
 	fs.StringVar(&containerId, "container", "", "Container id")
 	fs.StringVar(&imageName, "image", "", "Image full name")
 	fs.StringVar(&opts.Mount, "mount", "", "Mount points")
+	fs.StringVar(&opts.Volume, "volume", "", "Volume")
 	switch cmd {
 	case "run":
 		_ = fs.Parse(os.Args[2:])
@@ -71,5 +73,7 @@ func main() {
 	case "setup-veth":
 		_ = fs.Parse(os.Args[2:])
 		util.Must(network.SetupVethInNamespace(containerId), "Unable to setup veth in container namespace")
+	case "volume":
+		volume.HandleCommand(os.Args[2:])
 	}
 }

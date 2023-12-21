@@ -6,6 +6,7 @@ import (
 	"github.com/StellarisJAY/my-container/common"
 	"github.com/StellarisJAY/my-container/network"
 	"github.com/StellarisJAY/my-container/util"
+	"github.com/StellarisJAY/my-container/volume"
 	"golang.org/x/sys/unix"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ type Options struct {
 	CpuLimit float64
 	MemLimit int
 	Mount    string
+	Volume   string
 }
 
 // Run 从image创建一个容器运行
@@ -67,13 +69,22 @@ func ExecCommand(containerId string, options *Options, args []string) {
 	cgroup.CreateCGroups(containerId)
 	cgroup.ConfigureCGroup(containerId, options.CpuLimit, options.MemLimit)
 
-	mntPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt")
-	var hostDirMntPoint string
-	if mntPoint, err := bindMounts(containerId, options.Mount); err != nil {
+	// bind mounts
+	var bindMntPoint string
+	if m, err := bindMounts(containerId, options.Mount); err != nil {
 		log.Println("Unable to mount host directory ", err)
 	} else {
-		hostDirMntPoint = mntPoint
+		bindMntPoint = m
 	}
+	// mount volume
+	var volumeMntPoint string
+	if v, err := mountVolume(containerId, options.Volume); err != nil {
+		log.Fatalln(err)
+		return
+	} else {
+		volumeMntPoint = v
+	}
+
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdout = os.Stdout
 	cmd.Stdin = os.Stdin
@@ -82,6 +93,7 @@ func ExecCommand(containerId string, options *Options, args []string) {
 	util.Must(network.JoinNetworkNamespace(containerId), "Unable to switch to container netns")
 	network.SetupLocalhostInterface()
 	// 将当前namespace的根目录设置到容器根目录
+	mntPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt")
 	util.Must(unix.Chroot(mntPath), "Unable to chroot to container file system")
 	util.Must(unix.Chdir("/"), "Unable to chdir to container root")
 	_ = util.CreateDirsIfNotExist([]string{"/proc", "/sys"})
@@ -91,8 +103,12 @@ func ExecCommand(containerId string, options *Options, args []string) {
 
 	_ = cmd.Run()
 	network.RemoveVeth(containerId, "-ns")
-	// unmount 宿主机目录
-	_ = unix.Unmount(hostDirMntPoint, 0)
+	if bindMntPoint != "" {
+		unix.Unmount(bindMntPoint, 0)
+	}
+	if volumeMntPoint != "" {
+		unix.Unmount(volumeMntPoint, 0)
+	}
 	util.Must(unix.Unmount("/proc", 0), "Unable to unmount /proc")
 	util.Must(unix.Unmount("/sys", 0), "Unable to unmount /sys")
 }
@@ -123,6 +139,18 @@ func bindMounts(containerId string, mntOptions string) (string, error) {
 	_ = util.CreateDirsIfNotExist([]string{mntPoint})
 	// 使用bind mount将宿主机目录挂载到容器目录
 	return dest, unix.Mount(src, mntPoint, "", unix.MS_BIND, "")
+}
+
+func mountVolume(containerId string, volumeOption string) (string, error) {
+	parts := strings.SplitN(volumeOption, ":", 2)
+	volumeName, dest := parts[0], parts[1]
+	v, err := volume.InspectVolume(volumeName)
+	if err != nil {
+		return "", err
+	}
+	hostPath := v.MountPoint
+	containerPath := path.Join(common.ContainerBaseDir, containerId, "fs", "mnt", dest)
+	return dest, unix.Mount(hostPath, containerPath, "", unix.MS_BIND, "")
 }
 
 func prepareVethInNamespace(containerId string) {
